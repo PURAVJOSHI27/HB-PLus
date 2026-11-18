@@ -11,7 +11,7 @@ import { theme } from '../src/theme';
  */
 // ─── DEV BYPASS ────────────────────────────────────────────────────────────
 // Set to false to re-enable authentication before going to production.
-const SKIP_AUTH = true;
+const SKIP_AUTH = false;
 // ───────────────────────────────────────────────────────────────────────────
 
 function RouteGuard() {
