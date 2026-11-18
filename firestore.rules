@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HB+ ACCESS ENTERPRISE SECURITY RULES
+    // Domain restriction: Only @hbplus.fit authenticated emails allowed
+    // =========================================================================
+
+    // Helper: Verify user is authenticated with verified @hbplus.fit email
+    function isHBPlusEmployee() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.matches('.*@hbplus[.]fit$')
+        && request.auth.token.email_verified == true;
+    }
+
+    // Helper: Check if user is accessing their own document
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Helper: Prevent self-elevation to admin privileges
+    function notElevatingPrivileges() {
+      return !('role' in request.resource.data)
+        || request.resource.data.role == resource.data.role
+        || resource == null && request.resource.data.role == 'employee';
+    }
+
+    // --- Employee Profile Collection ---
+    match /users/{userId} {
+      // Any verified @hbplus.fit employee can read directory profiles
+      allow read: if isHBPlusEmployee();
+
+      // Employees can only update their own profile and CANNOT assign admin roles
+      allow create: if isHBPlusEmployee() 
+                    && isOwner(userId) 
+                    && request.resource.data.role == 'employee';
+
+      allow update: if isHBPlusEmployee() 
+                    && isOwner(userId) 
+                    && notElevatingPrivileges();
+
+      allow delete: if false; // Deletion requires administrative or service action
+    }
+
+    // --- Access Audit Logs (Security Monitoring) ---
+    match /audit_logs/{logId} {
+      // Employees can write their own login audit event
+      allow create: if request.auth != null 
+                    && request.resource.data.uid == request.auth.uid;
+      
+      // Reading audit logs restricted strictly to security staff or owner
+      allow read: if isHBPlusEmployee() 
+                  && (resource.data.uid == request.auth.uid || request.auth.token.admin == true);
+
+      // Audit logs are immutable
+      allow update, delete: if false;
+    }
+
+    // --- Internal Enterprise Operational Data ---
+    match /internal_data/{document=**} {
+      allow read, write: if isHBPlusEmployee();
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
